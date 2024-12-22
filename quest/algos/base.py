@@ -25,6 +25,7 @@ class Policy(nn.Module, ABC):
                  obs_reduction,
                  shape_meta,
                  device,
+                 use_vision_tokens,
                  ):
         super().__init__()
 
@@ -34,6 +35,7 @@ class Policy(nn.Module, ABC):
         self.optimizer_factory = optimizer_factory
         self.scheduler_factory = scheduler_factory
         self.device = device
+        self.use_vision_tokens = use_vision_tokens
         total_obs_channels = 0
 
         do_image = image_encoder_factory is not None
@@ -50,7 +52,7 @@ class Policy(nn.Module, ABC):
                     encoder = nn.Sequential(
                         encoder,
                         nn.ReLU(),
-                        nn.Linear(encoder.out_channels, embed_dim)
+                        nn.Linear(encoder.out_channels, embed_dim),
                     )
                 self.image_encoders[name] = encoder
             self.image_encoders = nn.ModuleDict(self.image_encoders)
@@ -64,7 +66,7 @@ class Policy(nn.Module, ABC):
                     encoder = nn.Sequential(
                         encoder,
                         nn.ReLU(),
-                        nn.Linear(encoder.out_channels, embed_dim)
+                        nn.Linear(encoder.out_channels, embed_dim),
                     )
                 self.lowdim_encoders[name] = encoder
             self.lowdim_encoders = nn.ModuleDict(self.lowdim_encoders)
@@ -127,7 +129,8 @@ class Policy(nn.Module, ABC):
             e = self.image_encoders[img_name](
                 x.reshape(B * T, C, H, W),
                 )
-            e = e.view(B, T, *e.shape[1:])
+            if not self.use_vision_tokens:
+                e = e.view(B, T, *e.shape[1:])
             img_encodings.append(e)
         
         # 2. add proprio info
@@ -141,7 +144,10 @@ class Policy(nn.Module, ABC):
                 obs_emb = self.obs_proj(encoded)
         elif self.obs_reduction == 'stack':
             encoded = img_encodings + lowdim_encodings
-            encoded = torch.stack(encoded, dim=2)
+            if self.use_vision_tokens:
+                encoded = torch.cat(encoded, dim=1)
+            else:
+                encoded = torch.stack(encoded, dim=2)
             obs_emb = encoded
         elif self.obs_reduction == 'none':
             return img_encodings, lowdim_encodings

@@ -19,6 +19,7 @@ class SkillGPT(nn.Module):
                  beam_size, # value of k for top k sampling
                  temperature, # temperature for sampling
                  device,
+                 full_context_attention
                  ):
         super().__init__()
         self.action_dim = action_dim
@@ -28,6 +29,7 @@ class SkillGPT(nn.Module):
         self.beam_size = beam_size
         self.temperature = temperature
         self.device = device
+        self.full_context_attention = full_context_attention
 
         self.tok_emb = nn.Embedding(vocab_size+1, n_embd)
         self.add_positional_emb = Summer(PositionalEncoding1D(n_embd))
@@ -54,6 +56,10 @@ class SkillGPT(nn.Module):
         x = torch.cat([context, x], dim=1)
         x = self.drop(x)
         mask = nn.Transformer.generate_square_subsequent_mask(x.size(1),x.device)
+
+        if self.full_context_attention:
+            mask[:context.size(1), :context.size(1)] = 0.0
+        
         x = self.decoder(x, mask=mask, is_causal=True)
         x = x[:, context.size(1):, :]
         x = self.lnf(x)

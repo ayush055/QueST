@@ -37,6 +37,7 @@ policy:
     beam_size: 5 # value of k for top k sampling
     temperature: 1.0 # temperature for sampling
     device: ${device}
+    full_context_attention: ${algo.full_context_attention}
   stage: ${stage}
   loss_fn:
     _target_: torch.nn.L1Loss
@@ -55,6 +56,7 @@ l1_loss_scale: 0 # scale factor used in finetuning stage
 embed_dim: 384 # stage 2 transformer hidden dim
 lowdim_embed_dim: 128 # each lowdim obs modality is embedded to this dim
 image_embed_dim: 256 # each image obs vision encoder's output is embedded to this dim
+full_context_attention: false  # allows full self-attention on context tokens rather than masked-self attention
 
 codebook_size: 1024 # note for fsq this will be computed automatically to be 1000, see get_fsq_level function in quest/algos/quest_modules/skill_vae.py
 skill_block_size: 32 # this is input sequence length to encoder

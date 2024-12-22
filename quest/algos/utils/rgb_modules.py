@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import torchvision
 import torchvision.transforms as transforms
 from torchvision.models._utils import IntermediateLayerGetter
+from positional_encodings.torch_encodings import PositionalEncodingPermute2D, Summer
 
 
 from quest.algos.baseline_modules.act_utils.misc import NestedTensor, is_main_process
@@ -205,13 +206,14 @@ class ResnetEncoder(nn.Module):
         language_dim=768,
         language_fusion="film",
         do_projection=True,
+        keep_tokens=False,
     ):
 
         super().__init__()
 
         ### 1. encode input (images) using convolutional layers
         assert remove_layer_num <= 5, "[error] please only remove <=5 layers"
-        weights = torchvision.models.ResNet18_Weights if pretrained else None
+        weights = torchvision.models.ResNet18_Weights.DEFAULT if pretrained else None
         layers = list(torchvision.models.resnet18(weights=weights).children())[
             :-remove_layer_num
         ]
@@ -238,11 +240,19 @@ class ResnetEncoder(nn.Module):
             layers[0].stride = (1, 1)
             layers[3].stride = 1
 
-        self.resnet18_base = nn.Sequential(*layers[:4])
-        self.block_1 = layers[4][0]
-        self.block_2 = layers[4][1]
-        self.block_3 = layers[5][0]
-        self.block_4 = layers[5][1]
+        self.keep_tokens = keep_tokens
+        if not self.keep_tokens:
+            self.resnet18_base = nn.Sequential(*layers[:4])
+            self.block_1 = layers[4][0]
+            self.block_2 = layers[4][1]
+            self.block_3 = layers[5][0]
+            self.block_4 = layers[5][1]
+        else:            
+            self.resnet18_base = nn.Sequential(*layers[:6])
+            self.block_1 = layers[6][0]
+            self.block_2 = layers[6][1]
+            self.block_3 = layers[7][0]
+            self.block_4 = layers[7][1]
 
         self.language_fusion = language_fusion
         if language_fusion != "none":
@@ -272,10 +282,17 @@ class ResnetEncoder(nn.Module):
             self.block_3(self.block_2(self.block_1(self.resnet18_base(x))))
         )
         output_shape = y.shape  # compute the out dim
+
+        do_projection = False if self.keep_tokens else do_projection  # do not need spatial softmax if we're using vision tokens
+
         if do_projection:
             ### 2. project the encoded input to a latent space
             self.projection_layer = SpatialProjection(output_shape[1:], output_size)
             self.out_channels = self.projection_layer(y).shape[1]
+        elif self.keep_tokens:
+            self.projection_layer = nn.Conv2d(output_shape[1], output_size, kernel_size=1, stride=1)
+            self.positional_encoding = Summer(PositionalEncodingPermute2D(output_size))
+            self.out_channels = output_size
         else:
             self.projection_layer = None
             self.out_channels = y.shape[-1]
@@ -319,7 +336,21 @@ class ResnetEncoder(nn.Module):
         if self.projection_layer is not None:
             h = self.projection_layer(h)
 
+        if self.keep_tokens:
+            B, C, H, W = h.shape
+            h = self.positional_encoding(h)
+            h = h.reshape(B, H * W, C)
+
         return h
+
+    def update_resnet_stride(self, layer, stride):
+        # Ensure the layer has the attributes
+        if hasattr(layer, 'conv1') and hasattr(layer, 'conv2'):
+            layer.conv1.stride = (stride, stride)
+            layer.conv2.stride = (stride, stride)
+            layer.downsample[0].stride = (stride, stride)
+        return layer
+
 
 
 class DINOEncoder(nn.Module):

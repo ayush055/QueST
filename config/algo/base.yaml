@@ -25,8 +25,11 @@ policy:
     T_max: ${training.n_epochs}
   embed_dim: ${algo.embed_dim}
   shape_meta: ${task.shape_meta}
+  use_vision_tokens: ${algo.use_vision_tokens}
   obs_reduction: 'none'
   device: ${device}
+
+use_vision_tokens: false
 
 dataset:
   lowdim_obs_seq_len: ${algo.skill_block_size}
