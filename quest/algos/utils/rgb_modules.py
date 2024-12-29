@@ -290,8 +290,17 @@ class ResnetEncoder(nn.Module):
             self.projection_layer = SpatialProjection(output_shape[1:], output_size)
             self.out_channels = self.projection_layer(y).shape[1]
         elif self.keep_tokens:
-            self.projection_layer = nn.Conv2d(output_shape[1], output_size, kernel_size=1, stride=1)
+            self.projection_layer = nn.Sequential(
+                nn.Conv2d(output_shape[1], output_size, kernel_size=1, stride=1),
+                # nn.MaxPool2d(kernel_size=(3, 3), stride=2, padding=1),
+                # nn.Conv2d(output_shape[1], output_shape[1] // 8, kernel_size=1, stride=1),      
+                # nn.ReLU(), 
+                # nn.Dropout(p=0.25),
+                # nn.Conv2d(output_shape[1] // 8, output_size, kernel_size=1, stride=1),
+                # nn.ReLU(),
+            )
             self.positional_encoding = Summer(PositionalEncodingPermute2D(output_size))
+            self.token_dropout = nn.Dropout(p=0.25)
             self.out_channels = output_size
         else:
             self.projection_layer = None
@@ -339,7 +348,8 @@ class ResnetEncoder(nn.Module):
         if self.keep_tokens:
             B, C, H, W = h.shape
             h = self.positional_encoding(h)
-            h = h.reshape(B, H * W, C)
+            h = h.permute(0, 2, 3, 1).reshape(B, H * W, C)
+            h = self.token_dropout(h)
 
         return h
 
