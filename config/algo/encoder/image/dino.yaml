@@ -1,0 +1,4 @@
+_target_: quest.algos.utils.rgb_modules.DINOProjection
+_partial_: true
+output_size: ${algo.image_embed_dim}
+# freeze: false

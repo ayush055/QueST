@@ -368,8 +368,7 @@ class DINOEncoder(nn.Module):
     def __init__(
         self,
         input_shape,
-        output_size,
-        pretrained=True,
+        freeze=True,
     ):
         super().__init__()
         assert (
@@ -385,6 +384,38 @@ class DINOEncoder(nn.Module):
             ]
         )
         self.dino = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
+        # self.mlp_block = nn.Sequential(
+        #     nn.Linear(384, 64),
+        #     nn.GELU(),
+        #     nn.Dropout(0.1),
+        #     nn.Linear(64, 1),
+        #     nn.Dropout(0.1),
+        # )
+        # self.projection = nn.Linear(384, output_size)
+        # self.out_channels = output_size
+        self.freeze = freeze    
+        if self.freeze:
+            for param in self.dino.parameters():
+                param.requires_grad = False
+
+    def forward(self, x, langs=None):
+        x = self.preprocess(x)
+        x = self.dino(x,is_training=True)
+        x = x['x_norm_patchtokens']
+        # mask = self.mlp_block(x).permute(0, 2, 1)
+        # mask = F.softmax(mask, dim=-1)
+        # x = torch.einsum('...si,...id->...sd', mask, x)
+        # x = torch.squeeze(self.projection(x), dim=1)
+        return x
+    
+class DINOProjection(nn.Module):
+    def __init__(
+        self,
+        input_shape,
+        output_size,
+    ):
+        super().__init__()
+
         self.mlp_block = nn.Sequential(
             nn.Linear(384, 64),
             nn.GELU(),
@@ -393,22 +424,11 @@ class DINOEncoder(nn.Module):
             nn.Dropout(0.1),
         )
         self.projection = nn.Linear(384, output_size)
-        self.output_shape = output_size
-    
-        if pretrained:
-            for param in self.dino.parameters():
-                param.requires_grad = False
+        self.out_channels = output_size
 
     def forward(self, x, langs=None):
-        x = self.preprocess(x)
-        x = self.dino(x,is_training=True)['x_norm_patchtokens']
         mask = self.mlp_block(x).permute(0, 2, 1)
         mask = F.softmax(mask, dim=-1)
         x = torch.einsum('...si,...id->...sd', mask, x)
         x = self.projection(x)
         return x
-
-    def output_shape(self, input_shape, shape_meta):
-        return self.output_shape
-
-

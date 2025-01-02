@@ -3,8 +3,10 @@ import torch.nn.functional as F
 import numpy as np
 import quest.utils.tensor_utils as TensorUtils
 import itertools
+from functools import partial
 
 from quest.algos.base import ChunkPolicy
+from quest.algos.utils.rgb_modules import DINOEncoder
 
 
 class QueST(ChunkPolicy):
@@ -28,29 +30,54 @@ class QueST(ChunkPolicy):
         self.loss = loss_fn
         
     def get_optimizers(self):
+        optimizers = []
+        name_blacklist = []
+
+        # need to separate dino encoder params and create customer optimizer factory with different lr
+        img_encoders_names, img_encoders_decay, img_encoders_no_decay = [], [], []
+        for img_encoder_name, img_encoder in self.image_encoders.items():
+            if isinstance(img_encoder, DINOEncoder) and not img_encoder.freeze:
+                img_encoder_decay, img_encoder_no_decay = TensorUtils.separate_no_decay(img_encoder)
+                img_encoders_decay.extend(img_encoder_decay)
+                img_encoders_no_decay.extend(img_encoder_no_decay)
+                img_encoders_names.append(img_encoder_name)
+            else:
+                continue
+
+        if img_encoders_decay or img_encoders_no_decay:
+            optimizers.extend([self.optimizer_factory(params=img_encoders_decay, lr=5e-6),
+                            self.optimizer_factory(params=img_encoders_no_decay, weight_decay=0., lr=5e-6)])
+            
+            name_blacklist.extend(img_encoders_names)
+
         if self.stage == 0:
             decay, no_decay = TensorUtils.separate_no_decay(self.autoencoder)
-            optimizers = [
+            optimizers.extend([
                 self.optimizer_factory(params=decay),
                 self.optimizer_factory(params=no_decay, weight_decay=0.)
-            ]
+            ])
             return optimizers
         elif self.stage == 1:
+            name_blacklist.append('autoencoder')
+            print("rest of params")
             decay, no_decay = TensorUtils.separate_no_decay(self, 
-                                                            name_blacklist=('autoencoder',))
-            optimizers = [
+                                                            name_blacklist=name_blacklist)
+
+            optimizers.extend([
                 self.optimizer_factory(params=decay),
                 self.optimizer_factory(params=no_decay, weight_decay=0.)
-            ]
+            ])
+
             return optimizers
         elif self.stage == 2:
+            name_blacklist.append('autoencoder')
             decay, no_decay = TensorUtils.separate_no_decay(self, 
-                                                            name_blacklist=('autoencoder',))
+                                                            name_blacklist=name_blacklist)
             decoder_decay, decoder_no_decay = TensorUtils.separate_no_decay(self.autoencoder.decoder)
-            optimizers = [
+            optimizers.extend([
                 self.optimizer_factory(params=itertools.chain(decay, decoder_decay)),
                 self.optimizer_factory(params=itertools.chain(no_decay, decoder_no_decay), weight_decay=0.)
-            ]
+            ])
             return optimizers
 
     def get_context(self, data):
