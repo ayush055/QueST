@@ -6,6 +6,7 @@ import quest.utils.tensor_utils as TensorUtils
 from quest.utils.utils import map_tensor_to_device
 import quest.utils.obs_utils as ObsUtils
 import einops
+from quest.algos.utils.rgb_modules import DINOEncoder, DINOProjection
 
 from abc import ABC, abstractmethod
 
@@ -47,6 +48,11 @@ class Policy(nn.Module, ABC):
         # observation encoders
         self.image_encoders = {}
         if do_image and shape_meta['observation']['rgb'] is not None:
+            if image_encoder_factory.func is DINOProjection:
+                assert len(set(shape_meta['observation']['rgb'].values())) == 1, "Not all image shapes are the same"
+                shape_in = list(shape_meta['observation']['rgb'].values())[0]
+                self.image_encoders['backbone'] = DINOEncoder(shape_in, freeze=True)
+
             for name, shape in shape_meta["observation"]['rgb'].items():
                 shape_in = list(shape)
                 encoder = image_encoder_factory(shape_in)
@@ -124,6 +130,10 @@ class Policy(nn.Module, ABC):
         if train_mode and self.use_augmentation:
             data = self.aug(data)
         for key in self.image_encoders:
+            
+            if key == 'backbone':
+                continue
+
             for obs_key in ('obs', 'next_obs'):
                 if obs_key in data:
                     x = TensorUtils.to_float(data[obs_key][key])
@@ -136,17 +146,48 @@ class Policy(nn.Module, ABC):
         ### 1. encode image
         img_encodings, lowdim_encodings = [], []
 
-        for img_name in self.image_encoders.keys():
-            x = data[obs_key][img_name]
-            if hwc:
-                x = einops.rearrange(x, 'B T H W C -> B T C H W')
+        if 'backbone' in self.image_encoders.keys():
+            x = []
+            for img_name in self.image_encoders.keys():
+                
+                if img_name == 'backbone':
+                    continue
+
+                img = data[obs_key][img_name]
+                if hwc:
+                    img = einops.rearrange(x, 'B T H W C -> B T C H W')
+                x.append(img)
+            
+            x = torch.concatenate(x, dim=0)
+
             B, T, C, H, W = x.shape
-            e = self.image_encoders[img_name](
-                x.reshape(B * T, C, H, W),
-                )
-            if not self.use_vision_tokens:
-                e = e.view(B, T, *e.shape[1:])
-            img_encodings.append(e)
+            e = self.image_encoders['backbone'](x.reshape(B * T, C, H, W))
+
+            B, T, D = e.shape
+            N = len(self.image_encoders.keys()) - 1
+            e = e.reshape(B // N, N, T, D)
+
+            camera_view = 0
+            for img_name in self.image_encoders.keys():
+
+                if img_name == 'backbone':
+                    continue
+
+                e_img = self.image_encoders[img_name](e[:, camera_view, ...])
+                img_encodings.append(e_img)
+                camera_view += 1            
+        else:
+            for img_name in self.image_encoders.keys():
+                x = data[obs_key][img_name]
+                if hwc:
+                    x = einops.rearrange(x, 'B T H W C -> B T C H W')
+                B, T, C, H, W = x.shape
+                e = self.image_encoders[img_name](
+                    x.reshape(B * T, C, H, W),
+                    )
+                if not self.use_vision_tokens:
+                    e = e.view(B, T, *e.shape[1:])
+                img_encodings.append(e)
         
         # 2. add proprio info
         for lowdim_name in self.lowdim_encoders.keys():
