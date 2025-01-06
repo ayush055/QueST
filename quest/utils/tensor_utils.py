@@ -79,6 +79,9 @@ def separate_no_decay(module,
     inter_params = decay & no_decay
     union_params = decay | no_decay
 
+    print(union_params)
+    print()
+
     # fuck = print
     # pain = list(param_dict.keys())
     # pain.sort()

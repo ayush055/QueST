@@ -45,9 +45,10 @@ class QueST(ChunkPolicy):
                 continue
 
         if img_encoders_decay or img_encoders_no_decay:
-            optimizers.extend([self.optimizer_factory(params=img_encoders_decay, lr=5e-6),
-                            self.optimizer_factory(params=img_encoders_no_decay, weight_decay=0., lr=5e-6)])
-            
+            optimizers.extend([
+                self.optimizer_factory(params=img_encoders_decay, lr=5e-6),
+                self.optimizer_factory(params=img_encoders_no_decay, weight_decay=0., lr=5e-6)
+            ])
             name_blacklist.extend(img_encoders_names)
 
         if self.stage == 0:
@@ -59,7 +60,6 @@ class QueST(ChunkPolicy):
             return optimizers
         elif self.stage == 1:
             name_blacklist.append('autoencoder')
-            print("rest of params")
             decay, no_decay = TensorUtils.separate_no_decay(self, 
                                                             name_blacklist=name_blacklist)
 
