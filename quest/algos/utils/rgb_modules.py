@@ -267,7 +267,7 @@ class ResnetEncoder(nn.Module):
                     "[error] cannot freeze pretrained "
                     + "resnet with the extra eye_in_hand input"
                 )
-            for param in self.resnet18_embeddings.parameters():
+            for param in self.resnet18_base.parameters():
                 param.requires_grad = False
 
         if pretrained:
