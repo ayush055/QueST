@@ -26,6 +26,8 @@ class QueST(ChunkPolicy):
         self.start_token = self.policy_prior.start_token
         self.l1_loss_scale = l1_loss_scale if stage == 2 else 0
         self.codebook_size = np.array(autoencoder.fsq_level).prod()
+
+        self.direct_skill_tokens = self.policy_prior.direct_skill_tokens
         
         self.loss = loss_fn
         
@@ -114,10 +116,15 @@ class QueST(ChunkPolicy):
     def compute_prior_loss(self, data):
         data = self.preprocess_input(data, train_mode=True)
         with torch.no_grad():
-            indices = self.autoencoder.get_indices(data["actions"]).long()
+            codes, indices = self.autoencoder.get_indices(data["actions"])
+            indices = indices.long()
         context = self.get_context(data)
-        start_tokens = (torch.ones((context.shape[0], 1), device=self.device, dtype=torch.long) * self.start_token)
-        x = torch.cat([start_tokens, indices[:,:-1]], dim=1)
+        if self.direct_skill_tokens:
+            start_tokens = (torch.ones((context.shape[0], 1, codes.shape[-1]), device=self.device, dtype=torch.long) * self.start_token)
+            x = torch.cat([start_tokens, codes[:,:-1,:]], dim=1)
+        else:    
+            start_tokens = (torch.ones((context.shape[0], 1), device=self.device, dtype=torch.long) * self.start_token)
+            x = torch.cat([start_tokens, indices[:,:-1]], dim=1)
         targets = indices.clone()
         logits = self.policy_prior(x, context)
         prior_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))

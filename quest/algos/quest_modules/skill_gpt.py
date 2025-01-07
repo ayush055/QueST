@@ -19,7 +19,9 @@ class SkillGPT(nn.Module):
                  beam_size, # value of k for top k sampling
                  temperature, # temperature for sampling
                  device,
-                 full_context_attention
+                 full_context_attention,
+                 direct_skill_tokens,
+                 skill_token_dim
                  ):
         super().__init__()
         self.action_dim = action_dim
@@ -30,8 +32,10 @@ class SkillGPT(nn.Module):
         self.temperature = temperature
         self.device = device
         self.full_context_attention = full_context_attention
+        self.direct_skill_tokens = direct_skill_tokens
+        self.skill_token_dim = skill_token_dim
 
-        self.tok_emb = nn.Embedding(vocab_size+1, n_embd)
+        self.tok_emb = nn.Linear(skill_token_dim, n_embd) if direct_skill_tokens else nn.Embedding(vocab_size+1, n_embd)
         self.add_positional_emb = Summer(PositionalEncoding1D(n_embd))
         self.decoder = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(

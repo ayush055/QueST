@@ -158,8 +158,8 @@ class SkillVAE(nn.Module):
 
     def get_indices(self, act, obs_emb=None):
         z = self.encode(act, obs_emb=obs_emb)
-        _, indices, _, _, _ = self.quantize(z)
-        return indices
+        codes, indices, _, _, _ = self.quantize(z)
+        return codes, indices
     
     def decode_actions(self, indices):
         if self.vq_type == 'fsq':

@@ -7,8 +7,8 @@ policy:
   autoencoder:
     _target_: quest.algos.quest_modules.skill_vae.SkillVAE
     action_dim: ${task.shape_meta.action_dim}
-    encoder_dim: 256
-    decoder_dim: 256
+    encoder_dim: ${algo.skill_token_dim}
+    decoder_dim: ${algo.skill_token_dim}
     skill_block_size: ${algo.skill_block_size}
     downsample_factor: ${algo.downsample_factor}
     attn_pdrop: 0.1
@@ -38,6 +38,8 @@ policy:
     temperature: 1.0 # temperature for sampling
     device: ${device}
     full_context_attention: ${algo.full_context_attention}
+    direct_skill_tokens: ${algo.direct_skill_tokens}
+    skill_token_dim: ${algo.skill_token_dim}
   stage: ${stage}
   loss_fn:
     _target_: torch.nn.L1Loss
@@ -53,10 +55,13 @@ lr: 0.0001
 weight_decay: 0.0001
 l1_loss_scale: 0 # scale factor used in finetuning stage
 
+skill_token_dim: 256
+
 embed_dim: 384 # stage 2 transformer hidden dim
 lowdim_embed_dim: 128 # each lowdim obs modality is embedded to this dim
 image_embed_dim: 256 # each image obs vision encoder's output is embedded to this dim
 full_context_attention: false  # allows full self-attention on context tokens rather than masked-self attention
+direct_skill_tokens: true  # uses the output of VQ layer directly (may perform linear projection) as input for the stage 2 transformer
 
 codebook_size: 1024 # note for fsq this will be computed automatically to be 1000, see get_fsq_level function in quest/algos/quest_modules/skill_vae.py
 skill_block_size: 32 # this is input sequence length to encoder
